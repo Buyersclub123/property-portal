@@ -443,6 +443,37 @@
         <tr><td colspan="8" class="loading">Loading opportunities...</td></tr>
       </tbody>
     </table>
+    <div style="margin-top: 20px; margin-bottom: 20px;">
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95em;">
+        <input type="checkbox" id="send-on-behalf-checkbox" style="width: 16px; height: 16px; cursor: pointer;">
+        <span>Send on behalf of someone else</span>
+      </label>
+      <div id="send-from-section" style="display: none; margin-top: 16px; padding: 16px; background: #f9f9f9; border-radius: 6px; border-left: 3px solid #4caf50;">
+        <div class="filter-row" style="margin-bottom: 12px;">
+          <label for="send-from-select" style="display: block; margin-bottom: 6px; font-weight: 600;">Send From (Email Address):</label>
+          <div style="display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap;">
+            <select id="send-from-select" class="filter-select" style="flex: 1; min-width: 250px; max-width: 400px; padding: 8px;">
+              <option value="">Select BA from list...</option>
+            </select>
+            <div style="display: flex; align-items: center; gap: 4px; flex: 1; min-width: 200px;">
+              <span style="white-space: nowrap;">or enter manually:</span>
+              <input type="email" id="send-from-manual" placeholder="email@example.com" style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95em;">
+            </div>
+          </div>
+          <div class="helper-text" style="margin-top: 6px;">Select which BA's email address to send from, or enter an email address manually. All selected opportunities will be sent from this address. Changing this will automatically load that BA's saved generic message (if available).</div>
+        </div>
+        <div style="margin-top: 16px; padding: 12px; background: #f0f0f0; border-radius: 4px;">
+          <strong style="font-size: 0.9em;">How "Send From" Works:</strong>
+          <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 0.85em; line-height: 1.6;">
+            <li><strong>Checkbox to Enable:</strong> Check "Send on behalf of someone else" to show the "Send From" dropdown</li>
+            <li><strong>Single Selection:</strong> One "Send From" selection applies to ALL opportunities selected by tick box</li>
+            <li><strong>Auto-Load Message:</strong> When you change "Send From", it automatically loads that BA's saved generic message</li>
+            <li><strong>Create/Save Messages:</strong> If the BA doesn't have a saved message, you can create one and save it for them</li>
+            <li><strong>Email Setup:</strong> Only email addresses that have been set up to send via this system can be used</li>
+          </ul>
+        </div>
+      </div>
+    </div>
     <div class="actions">
       <button id="send-standard">Send to All with Standard Message</button>
       <button id="action-above">Action the Above</button>
@@ -463,6 +494,9 @@ let baEmail = '';
 let currentBAFilter = '';
 let selectedBAs = [];
 let selectedStages = [];
+let baEmailMap = {}; // Maps BA names to email addresses
+let selectedSendFromEmail = ''; // Selected "Send From" email address
+let sendFromChangeHandler = null; // Store reference to change handler to avoid duplicates
 function autoResizeTextarea(textarea) {
   textarea.style.height = 'auto';
   textarea.style.height = textarea.scrollHeight + 'px';
@@ -622,6 +656,8 @@ async function loadOpportunities() {
     filteredOpportunities = [...allOpportunities];
     populateBAFilter();
     populateStageFilter();
+    await loadBAEmailMap(); // Load BA name-to-email mapping
+    populateSendFromDropdown();
     renderOpportunities();
     updateFilterCount();
     showMessage(`Successfully loaded ${allOpportunities.length} opportunities.`, 'success');
@@ -735,6 +771,88 @@ function setupFilterDropdowns() {
     }
   });
 }
+async function loadBAEmailMap() {
+  // Load BA name-to-email mapping from Generic BA messages sheet
+  try {
+    const data = await fetchGoogleSheetJSON(GENERIC_MESSAGES_TAB);
+    baEmailMap = {};
+    data.forEach(row => {
+      const baName = row['BA_Name'] || row['BA_Email'] || '';
+      const baEmailAddr = row['BA_Email'] || '';
+      if (baName && baEmailAddr) {
+        baEmailMap[baName] = baEmailAddr;
+      }
+    });
+    console.log("BA Email Map loaded:", baEmailMap);
+  } catch (error) {
+    console.error("Error loading BA email map:", error);
+    // Fallback: use BA names as emails if mapping fails
+    baEmailMap = {};
+  }
+}
+
+function populateSendFromDropdown() {
+  const select = document.getElementById('send-from-select');
+  select.innerHTML = '<option value="">Select BA to send from...</option>';
+  
+  // Remove existing event listener if it exists
+  if (sendFromChangeHandler) {
+    select.removeEventListener('change', sendFromChangeHandler);
+  }
+  
+  // Get unique BA names from opportunities
+  const uniqueBAs = [...new Set(allOpportunities.map(opp => opp.follower || '').filter(Boolean))];
+  
+  // Add each BA as an option
+  uniqueBAs.sort().forEach(baName => {
+    const email = baEmailMap[baName] || baEmail || '';
+    const option = document.createElement('option');
+    option.value = email || baName; // Use email if available, otherwise use name
+    option.textContent = email ? `${baName} (${email})` : baName;
+    select.appendChild(option);
+  });
+  
+  // Set default to current BA's email if available
+  if (baEmail) {
+    select.value = baEmail;
+    selectedSendFromEmail = baEmail;
+  } else if (currentBAFilter && baEmailMap[currentBAFilter]) {
+    select.value = baEmailMap[currentBAFilter];
+    selectedSendFromEmail = baEmailMap[currentBAFilter];
+  }
+  
+  // Create and attach change handler
+  sendFromChangeHandler = async function(e) {
+    const emailValue = e.target.value || '';
+    if (!emailValue) return;
+    
+    selectedSendFromEmail = emailValue;
+    
+    // Find the BA name for the selected email and load their generic message
+    if (selectedSendFromEmail) {
+      // Find BA name from email map (reverse lookup)
+      const baNameForEmail = Object.keys(baEmailMap).find(name => baEmailMap[name] === selectedSendFromEmail);
+      
+      if (baNameForEmail) {
+        // Temporarily set currentBAFilter to load the message
+        const previousFilter = currentBAFilter;
+        currentBAFilter = baNameForEmail;
+        await loadGenericMessage();
+        // Don't change currentBAFilter permanently - just for loading message
+        currentBAFilter = previousFilter;
+      } else {
+        // If no BA name found, try loading by email directly
+        const previousFilter = currentBAFilter;
+        currentBAFilter = selectedSendFromEmail;
+        await loadGenericMessage();
+        currentBAFilter = previousFilter;
+      }
+    }
+  };
+  
+  // Note: The change handler is attached in DOMContentLoaded to handle both dropdown and manual input
+}
+
 async function loadGenericMessage() {
   let searchKey = baEmail || currentBAFilter;
   if(!searchKey) return;
@@ -772,23 +890,55 @@ async function loadGenericMessage() {
   } catch (error) { console.error("Error loading generic message from sheet:", error); }
 }
 async function saveGenericMessage(showFeedback = true) {
-  let saveKey = baEmail || (selectedBAs.length === 1 ? selectedBAs[0] : null);
+  // Determine which BA to save for:
+  // 1. If "Send on behalf" is checked and a BA is selected, save for that BA
+  // 2. Otherwise, save for current user (existing logic)
+  const sendOnBehalfCheckbox = document.getElementById('send-on-behalf-checkbox');
+  const sendFromSelect = document.getElementById('send-from-select');
+  
+  let saveKey = null;
+  
+  if (sendOnBehalfCheckbox && sendOnBehalfCheckbox.checked && selectedSendFromEmail) {
+    // Saving for the BA we're sending on behalf of
+    // Find BA name from email (reverse lookup)
+    const baNameForEmail = Object.keys(baEmailMap).find(name => baEmailMap[name] === selectedSendFromEmail);
+    saveKey = baNameForEmail || selectedSendFromEmail;
+  } else {
+    // Original logic: save for current user
+    saveKey = baEmail || (selectedBAs.length === 1 ? selectedBAs[0] : null);
+  }
+  
   if(!saveKey) {
-    if(showFeedback) showSaveStatus('Please select exactly one BA filter first', false, true);
+    if(showFeedback) {
+      if (sendOnBehalfCheckbox && sendOnBehalfCheckbox.checked) {
+        showSaveStatus('Please select a BA to send from first', false, true);
+      } else {
+        showSaveStatus('Please select exactly one BA filter first', false, true);
+      }
+    }
     return false;
   }
-  if (baEmail && selectedBAs.length > 0 && !selectedBAs.includes(baEmail)) {
-    if(showFeedback) showSaveStatus('Cannot save: You can only save messages for your own account', false, true);
-    return false;
+  
+  // Only restrict saving if NOT sending on behalf of someone else
+  if (!sendOnBehalfCheckbox || !sendOnBehalfCheckbox.checked) {
+    if (baEmail && selectedBAs.length > 0 && !selectedBAs.includes(baEmail)) {
+      if(showFeedback) showSaveStatus('Cannot save: You can only save messages for your own account', false, true);
+      return false;
+    }
   }
+  
   const message = document.getElementById("standard-message").value.trim();
   try {
     const key = `ba_message_${saveKey}`;
     localStorage.setItem(key, JSON.stringify({ baEmail: saveKey, genericMessage: message, lastUpdated: new Date().toISOString() }));
-    console.log("Generic message saved (localStorage):", { baEmail: saveKey, message });
+    console.log("Generic message saved (localStorage):", { baEmail: saveKey, message, sendOnBehalf: sendOnBehalfCheckbox && sendOnBehalfCheckbox.checked });
     if(showFeedback) {
-      if(message) showSaveStatus('✓ Message saved!', true);
-      else showSaveStatus('Message cleared', true);
+      if(message) {
+        const baDisplayName = Object.keys(baEmailMap).find(name => baEmailMap[name] === saveKey) || saveKey;
+        showSaveStatus(`✓ Message saved for ${baDisplayName}!`, true);
+      } else {
+        showSaveStatus('Message cleared', true);
+      }
     }
     return true;
   } catch(error) {
@@ -943,6 +1093,20 @@ async function sendEmailsToClients(selectedClients, action) {
       showMessage("Unable to identify BA. Please ensure you're accessing via email link or have selected a BA filter.", 'error');
       return;
     }
+    // Determine "Send From" email - use manual input, dropdown, or fallback to BA identifier
+    const sendOnBehalfCheckbox = document.getElementById('send-on-behalf-checkbox');
+    const sendFromManualInput = document.getElementById('send-from-manual');
+    let sendFromEmail = baIdentifier || baEmail;
+    
+    if (sendOnBehalfCheckbox && sendOnBehalfCheckbox.checked) {
+      // Check manual input first, then dropdown, then fallback
+      if (sendFromManualInput && sendFromManualInput.value.trim()) {
+        sendFromEmail = sendFromManualInput.value.trim();
+      } else if (selectedSendFromEmail) {
+        sendFromEmail = selectedSendFromEmail;
+      }
+    }
+    
     const payload = {
       source: "portal",
       id: propertyInfo.recordId,
@@ -950,6 +1114,7 @@ async function sendEmailsToClients(selectedClients, action) {
       propertyAddress: propertyInfo.propertyAddress,
       baEmail: baIdentifier,
       baName: currentBAFilter || baIdentifier,
+      sendFromEmail: sendFromEmail, // New field for "Send From" email
       selectedClients: selectedClients,
       action: action,
       timestamp: new Date().toISOString()
@@ -1085,6 +1250,77 @@ document.addEventListener("DOMContentLoaded", () => {
   const standardMessageTextarea = document.getElementById("standard-message");
   standardMessageTextarea.addEventListener('input', () => { autoResizeTextarea(standardMessageTextarea); });
   document.getElementById("save-message-btn").addEventListener("click", () => { saveGenericMessage(true); });
+  
+  // Handle "Send on behalf" checkbox
+  const sendOnBehalfCheckbox = document.getElementById("send-on-behalf-checkbox");
+  const sendFromSection = document.getElementById("send-from-section");
+  const sendFromSelect = document.getElementById("send-from-select");
+  const sendFromManual = document.getElementById("send-from-manual");
+  
+  if (sendOnBehalfCheckbox && sendFromSection) {
+    sendOnBehalfCheckbox.addEventListener("change", (e) => {
+      if (e.target.checked) {
+        sendFromSection.style.display = "block";
+        // If no selection yet, ensure dropdown is populated
+        if (sendFromSelect && sendFromSelect.options.length <= 1) {
+          populateSendFromDropdown();
+        }
+      } else {
+        sendFromSection.style.display = "none";
+        selectedSendFromEmail = '';
+        if (sendFromManual) sendFromManual.value = '';
+        if (sendFromSelect) sendFromSelect.value = '';
+        // Reload current user's message
+        loadGenericMessage();
+      }
+    });
+  }
+  
+  // Handle manual email input - update selectedSendFromEmail when user types
+  if (sendFromManual) {
+    sendFromManual.addEventListener("input", (e) => {
+      const manualEmail = e.target.value.trim();
+      if (manualEmail) {
+        selectedSendFromEmail = manualEmail;
+        // Clear dropdown selection when manual entry is used
+        if (sendFromSelect) sendFromSelect.value = '';
+      } else {
+        // If manual field cleared, use dropdown value if set
+        if (sendFromSelect && sendFromSelect.value) {
+          selectedSendFromEmail = sendFromSelect.value;
+        } else {
+          selectedSendFromEmail = '';
+        }
+      }
+    });
+    
+    sendFromManual.addEventListener("blur", (e) => {
+      // Validate email format
+      const email = e.target.value.trim();
+      if (email && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+        e.target.style.borderColor = '#eb5858';
+        showSaveStatus('Please enter a valid email address', false, true);
+      } else {
+        e.target.style.borderColor = '#ccc';
+      }
+    });
+  }
+  
+  // Handle dropdown change - clear manual input when dropdown is selected
+  if (sendFromSelect && sendFromChangeHandler) {
+    // Store original handler
+    const originalHandler = sendFromChangeHandler;
+    sendFromSelect.addEventListener("change", (e) => {
+      if (e.target.value) {
+        selectedSendFromEmail = e.target.value;
+        // Clear manual input when dropdown is used
+        if (sendFromManual) sendFromManual.value = '';
+        // Call original handler if it exists
+        if (originalHandler) originalHandler(e);
+      }
+    });
+  }
+  
   document.getElementById("select-all").addEventListener("change", (e) => {
     document.querySelectorAll(".opp-checkbox").forEach(cb => cb.checked = e.target.checked);
   });

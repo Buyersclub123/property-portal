@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Property Review - Confirmation (TEST)</title>
+  <title>Property Review - Confirmation</title>
   <style>
     * {
       margin: 0;
@@ -16,48 +16,9 @@
       background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
       min-height: 100vh;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
       padding: 20px;
-    }
-    
-    .test-controls {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-      padding: 20px;
-      margin-bottom: 20px;
-      max-width: 500px;
-      width: 100%;
-    }
-    
-    .test-controls h2 {
-      font-size: 18px;
-      color: #4c4c4c;
-      margin-bottom: 15px;
-    }
-    
-    .test-buttons {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    
-    .test-btn {
-      padding: 8px 16px;
-      background-color: #fbd721;
-      color: #4c4c4c;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-    }
-    
-    .test-btn:hover {
-      background-color: #e6c51d;
     }
     
     .confirmation-container {
@@ -124,6 +85,16 @@
     .icon.loading {
       background-color: #e7f3ff;
       color: #007bff;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
     }
     
     h1 {
@@ -183,28 +154,9 @@
       animation: spin 1s linear infinite;
       margin: 0 auto;
     }
-    
-    @keyframes spin {
-      from {
-        transform: rotate(0deg);
-      }
-      to {
-        transform: rotate(360deg);
-      }
-    }
   </style>
 </head>
 <body>
-  <div class="test-controls">
-    <h2>Test Controls - Click to preview different states:</h2>
-    <div class="test-buttons">
-      <button class="test-btn" onclick="showState('loading')">Loading</button>
-      <button class="test-btn" onclick="showState('success-approve')">Success (Approve)</button>
-      <button class="test-btn" onclick="showState('success-reject')">Success (Reject)</button>
-      <button class="test-btn" onclick="showState('error')">Error</button>
-    </div>
-  </div>
-
   <div class="confirmation-container">
     <img src="https://storage.googleapis.com/msgsndr/UJWYn4mrgGodB7KZUcHt/media/6938361650387f7f05884d8de.jpg" 
          alt="BuyersClub" 
@@ -233,6 +185,18 @@
   </div>
 
   <script>
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const action = urlParams.get('action');
+    const recordId = urlParams.get('recordId');
+    const propertyId = urlParams.get('propertyId');
+    const propertyAddress = urlParams.get('propertyAddress');
+    const field = urlParams.get('field');
+    const value = urlParams.get('value');
+    
+    // Webhook URL
+    const WEBHOOK_URL = 'https://hook.eu1.make.com/q85flukqhepku5rudd6bc1qbl9mqtlxk';
+    
     // Confirmation messages based on action
     const messages = {
       approve: {
@@ -245,43 +209,82 @@
       }
     };
     
-    function showState(state) {
-      // Hide all states
-      document.getElementById('loadingState').style.display = 'none';
-      document.getElementById('successState').style.display = 'none';
-      document.getElementById('errorState').style.display = 'none';
-      
-      // Show selected state
-      if (state === 'loading') {
-        document.getElementById('loadingState').style.display = 'block';
-      } else if (state === 'success-approve') {
-        document.getElementById('successState').style.display = 'block';
-        document.getElementById('successTitle').textContent = messages.approve.title;
-        document.getElementById('successMessage').textContent = messages.approve.message;
-      } else if (state === 'success-reject') {
-        document.getElementById('successState').style.display = 'block';
-        document.getElementById('successTitle').textContent = messages.reject.title;
-        document.getElementById('successMessage').textContent = messages.reject.message;
-      } else if (state === 'error') {
-        document.getElementById('errorState').style.display = 'block';
-        document.getElementById('errorMessage').textContent = 'Failed to process request. Please try again.';
+    // Process the action
+    async function processAction() {
+      try {
+        // Build webhook URL with parameters
+        const webhookUrl = new URL(WEBHOOK_URL);
+        webhookUrl.searchParams.set('recordId', recordId || '');
+        webhookUrl.searchParams.set('propertyId', propertyId || '');
+        webhookUrl.searchParams.set('action', action || '');
+        if (field) webhookUrl.searchParams.set('field', field);
+        if (value) webhookUrl.searchParams.set('value', value);
+        
+        // Call webhook
+        const response = await fetch(webhookUrl.toString(), {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+        
+        // Hide loading state
+        document.getElementById('loadingState').style.display = 'none';
+        
+        // Check if request was successful
+        if (response.ok || response.status === 200) {
+          // Show success state
+          const successState = document.getElementById('successState');
+          successState.style.display = 'block';
+          
+          // Set success message based on action
+          const msg = messages[action] || messages.approve;
+          document.getElementById('successTitle').textContent = msg.title;
+          document.getElementById('successMessage').textContent = msg.message;
+          
+          // Auto-close after 3 seconds (optional)
+          setTimeout(() => {
+            closeWindow();
+          }, 3000);
+        } else {
+          // Show error state
+          showError('Failed to process request. Please try again.');
+        }
+      } catch (error) {
+        // Hide loading state
+        document.getElementById('loadingState').style.display = 'none';
+        
+        // Show error state
+        showError('An error occurred: ' + error.message);
+        console.error('Error:', error);
       }
     }
     
-    function closeWindow() {
-      alert('In production, this would close the window or redirect to Gmail.');
-      // In production:
-      // window.close();
-      // setTimeout(() => {
-      //   window.location.href = 'https://mail.google.com';
-      // }, 500);
+    function showError(message) {
+      const errorState = document.getElementById('errorState');
+      errorState.style.display = 'block';
+      document.getElementById('errorMessage').textContent = message;
     }
     
-    // Show loading state by default
-    showState('loading');
+    function closeWindow() {
+      // Try to close the window/tab
+      window.close();
+      
+      // If window.close() doesn't work (some browsers block it), 
+      // redirect to Gmail after a short delay
+      setTimeout(() => {
+        window.location.href = 'https://mail.google.com';
+      }, 500);
+    }
     
-    // Auto-demo: cycle through states (optional - comment out if you don't want this)
-    // setTimeout(() => showState('success-approve'), 2000);
+    // Validate required parameters
+    if (!action || !recordId) {
+      document.getElementById('loadingState').style.display = 'none';
+      showError('Missing required parameters. Please use the link from your email.');
+    } else {
+      // Start processing
+      processAction();
+    }
   </script>
 </body>
 </html>

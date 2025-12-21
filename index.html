@@ -374,12 +374,34 @@
       border-left: 4px solid #c33;
     }
     .success-message {
-      background: #efe;
-      color: #3c3;
-      padding: 12px;
-      border-radius: 6px;
+      background: #d4edda;
+      color: #155724;
+      padding: 20px;
+      border-radius: 8px;
       margin-bottom: 20px;
-      border-left: 4px solid #3c3;
+      border-left: 5px solid #28a745;
+      font-size: 16px;
+      font-weight: 500;
+      text-align: center;
+    }
+    .success-message-large {
+      background: #d4edda;
+      color: #155724;
+      padding: 30px;
+      border-radius: 12px;
+      margin: 20px 0;
+      border: 2px solid #28a745;
+      font-size: 18px;
+      font-weight: 600;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(40, 167, 69, 0.2);
+    }
+    .countdown-message {
+      font-size: 14px;
+      color: #666;
+      margin-top: 10px;
+      font-weight: normal;
+      font-style: italic;
     }
   </style>
 </head>
@@ -1127,15 +1149,63 @@ async function sendEmailsToClients(selectedClients, action) {
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const result = await response.json().catch(() => ({ success: true }));
     if (result.success !== false) {
-      showMessage(`✓ Successfully sent emails to ${selectedClients.length} client(s)!`, 'success');
+      // Show prominent success message
+      const messageArea = document.getElementById('message-area');
       const batchId = generateBatchId();
       trackSends(propertyInfo.propertyAddress, currentBAFilter || baIdentifier, selectedClients, batchId);
+      
+      // Display success message with countdown
+      let countdown = 5;
+      const updateMessage = () => {
+        messageArea.innerHTML = `
+          <div class="success-message-large">
+            ✓ All emails have been sent to clients as requested<br>
+            <span style="font-size: 16px; font-weight: normal; margin-top: 10px; display: block;">
+              Successfully sent ${selectedClients.length} email(s) to selected clients.
+            </span>
+            <div class="countdown-message">
+              This window will auto-close in ${countdown} second${countdown !== 1 ? 's' : ''}...
+            </div>
+          </div>
+        `;
+      };
+      
+      updateMessage();
+      
+      // Update countdown every second
+      const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+          updateMessage();
+        } else {
+          clearInterval(countdownInterval);
+          // Try to close the window/tab
+          window.close();
+          
+          // If window.close() doesn't work (some browsers block it),
+          // redirect to Gmail after a short delay
+          setTimeout(() => {
+            window.location.href = 'https://mail.google.com';
+          }, 500);
+        }
+      }, 1000);
     } else {
       throw new Error(result.error || 'Unknown error from webhook');
     }
   } catch (error) {
     console.error("Error sending emails:", error);
-    showMessage(`Error sending emails: ${error.message}. Please check your connection and try again.`, 'error');
+    // Show detailed error message - portal stays open for screenshot
+    const messageArea = document.getElementById('message-area');
+    messageArea.innerHTML = `
+      <div class="error-message" style="padding: 20px; font-size: 16px;">
+        <strong>❌ Error: Failed to send emails</strong><br><br>
+        <strong>Error Details:</strong><br>
+        ${escapeHtml(error.message)}<br><br>
+        <strong>What to do:</strong><br>
+        Please take a screenshot of this error message and send it to support.<br>
+        The portal will remain open so you can capture this information.
+      </div>
+    `;
   }
 }
 // ============================================

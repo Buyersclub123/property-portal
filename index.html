@@ -390,7 +390,7 @@
     <div class="property-summary" id="property-summary">Property Name: [Loading...]</div>
     <div class="standard-message-section">
       <label for="standard-message"><strong>Your Standard Client Message:</strong></label>
-      <textarea id="standard-message" rows="4" placeholder="Hi, please see the opportunity below, keen to get your feedback on this when you are free to speak."></textarea>
+      <textarea id="standard-message" rows="4" placeholder="💡 Tip: Your message formatting will be preserved exactly as you type it. Use line breaks (Enter) to create paragraphs or spacing in your email."></textarea>
       <div class="message-actions">
         <button id="save-message-btn" class="save-message-btn">Save Message</button>
         <span id="save-status" class="save-status"></span>
@@ -832,13 +832,12 @@ function renderOpportunities() {
         const partnerNameInput = tr.querySelector(".partner-name-input").value.trim();
         let names = clientNameInput;
         if(partnerNameInput) names += (names ? " & " : "") + partnerNameInput;
-        const personalizedMsg = names ? `Hi ${names}, this fits your strategy perfectly, we should act quickly on this.` : document.getElementById("standard-message").value;
         const textarea = document.createElement("textarea");
         textarea.className = "small personal-msg-textarea";
         textarea.rows = 2;
         textarea.style.width = "98%";
         textarea.placeholder = "Enter personalized message...";
-        textarea.value = personalizedMsg;
+        textarea.value = ""; // Start blank
         textarea.addEventListener('input', () => autoResizeTextarea(textarea));
         msgCell.innerHTML = '';
         msgCell.appendChild(textarea);

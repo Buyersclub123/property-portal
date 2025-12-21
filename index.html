@@ -1149,46 +1149,54 @@ async function sendEmailsToClients(selectedClients, action) {
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const result = await response.json().catch(() => ({ success: true }));
     if (result.success !== false) {
-      // Show prominent success message
       const messageArea = document.getElementById('message-area');
       const batchId = generateBatchId();
       trackSends(propertyInfo.propertyAddress, currentBAFilter || baIdentifier, selectedClients, batchId);
       
-      // Display success message with countdown
-      let countdown = 5;
-      const updateMessage = () => {
-        messageArea.innerHTML = `
-          <div class="success-message-large">
-            ✓ All emails have been sent to clients as requested<br>
-            <span style="font-size: 16px; font-weight: normal; margin-top: 10px; display: block;">
-              Successfully sent ${selectedClients.length} email(s) to selected clients.
-            </span>
-            <div class="countdown-message">
-              This window will auto-close in ${countdown} second${countdown !== 1 ? 's' : ''}...
+      // Show "Processing..." message immediately
+      messageArea.innerHTML = `
+        <div class="success-message-large" style="background: #e7f3ff; border-color: #007bff; color: #004085;">
+          <div style="font-size: 24px; margin-bottom: 10px;">⏳ Processing...</div>
+          <span style="font-size: 16px; font-weight: normal; margin-top: 10px; display: block;">
+            Sending ${selectedClients.length} email(s) to selected clients...
+          </span>
+        </div>
+      `;
+      
+      // After 4 seconds, show final message with instruction to check sent items
+      setTimeout(() => {
+        let countdown = 5;
+        const updateMessage = () => {
+          messageArea.innerHTML = `
+            <div class="success-message-large" style="background: #fff3cd; border-color: #ffc107; color: #856404;">
+              ✓ Emails are being sent<br>
+              <span style="font-size: 16px; font-weight: normal; margin-top: 10px; display: block;">
+                The request has been processed. ${selectedClients.length} email(s) should be sent shortly.<br><br>
+                <strong>Please verify by checking your Gmail Sent Items folder.</strong>
+              </span>
+              <div class="countdown-message">
+                This window will auto-close in ${countdown} second${countdown !== 1 ? 's' : ''}...
+              </div>
             </div>
-          </div>
-        `;
-      };
-      
-      updateMessage();
-      
-      // Update countdown every second
-      const countdownInterval = setInterval(() => {
-        countdown--;
-        if (countdown > 0) {
-          updateMessage();
-        } else {
-          clearInterval(countdownInterval);
-          // Try to close the window/tab
-          window.close();
-          
-          // If window.close() doesn't work (some browsers block it),
-          // redirect to Gmail after a short delay
-          setTimeout(() => {
-            window.location.href = 'https://mail.google.com';
-          }, 500);
-        }
-      }, 1000);
+          `;
+        };
+        
+        updateMessage();
+        
+        // Update countdown every second
+        const countdownInterval = setInterval(() => {
+          countdown--;
+          if (countdown > 0) {
+            updateMessage();
+          } else {
+            clearInterval(countdownInterval);
+            window.close();
+            setTimeout(() => {
+              window.location.href = 'https://mail.google.com';
+            }, 500);
+          }
+        }, 1000);
+      }, 4000);
     } else {
       throw new Error(result.error || 'Unknown error from webhook');
     }
